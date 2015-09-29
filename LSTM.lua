@@ -51,8 +51,9 @@ function LSTM.create(input_size, output_size, rnn_size, n, is_dec)
 
 	if is_dec==1 then
 		local last_h = outputs[#outputs]
-		local pred = nn.Linear(rnn_size, output_size)(last_h)
-		table.insert(outputs, pred)
+		local proj = nn.Linear(rnn_size, output_size)(last_h)
+		-- local pred = nn.LogSoftMax()(proj)
+		table.insert(outputs, proj)
 	end
 
 	return nn.gModule(inputs, outputs)
