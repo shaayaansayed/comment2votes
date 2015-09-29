@@ -16,7 +16,8 @@ num_layers = 1
 grad_clip = 5
 learning_rate = 2e-3
 learning_rate_decay = .97
-decay_rate = 10
+decay_rate = .95
+learning_rate_decay_after = 10
 
 local split_sizes = {1, 0, 0} 
 data_dir = 'data/nba'
@@ -73,7 +74,8 @@ function feval(x)
 		for k=1, #init_state do table.insert(en_rnn_state[t], lst[k]) end
 	end
 
-	local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state - 1]}
+	local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state]}
+	dclone.rnn[1]:training()
 	local lst = dclone.rnn[1]:forward{torch.DoubleTensor({-1}):view(1,1), unpack(dec_rnn_state[0])}
 	dec_rnn_state[1] = {}
 	for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
@@ -85,9 +87,7 @@ function feval(x)
 	table.insert(ddec_rnn_state[1], doutput)
 	local dh = dclone.rnn[1]:backward({torch.DoubleTensor({-1}):view(1,1), unpack(dec_rnn_state[0])}, ddec_rnn_state[1])
 	ddec_rnn_state[0] = {}
-	for k=1, #init_state do 
-		table.insert(ddec_rnn_state[0], dh[k+1])
-	end
+	for k=1, #init_state do table.insert(ddec_rnn_state[0], dh[k+1]) end
 
 	local den_rnn_state = {[in_length] = clone_list(ddec_rnn_state[0])}
 	for t=in_length, 1, -1 do
@@ -108,12 +108,19 @@ local optim_state = {learningRate = learning_rate, alpha = decay_rate}
 local iterations = 1 * loader.ntrain
 local iterations_per_epoch = loader.ntrain
 local loss0 = nil
+
+state = {
+   learningRate = 1e-3,
+   momentum = 0.5
+}
+
 for i = 1, iterations do
     local epoch = i / loader.ntrain
 
     local timer = torch.Timer()
-    local _, loss = optim.rmsprop(feval, params, optim_state)
+    local _, loss = optim.sgd(feval, params, state)
     local time = timer:time().real
+    print(loss)
 
     local train_loss = loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
@@ -139,8 +146,8 @@ for i = 1, iterations do
         break -- halt
     end
     if loss0 == nil then loss0 = loss[1] end
-    if loss[1] > loss0 * 3 then
-        print('loss is exploding, aborting.')
-        break -- halt
-    end
+    -- if loss[1] > loss0 * 3 then
+    --     print('loss is exploding, aborting.')
+    --     break -- halt
+    -- end
 end
