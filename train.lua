@@ -18,10 +18,11 @@ learning_rate = 2e-3
 learning_rate_decay = .97
 decay_rate = .95
 learning_rate_decay_after = 10
+batch_size = 128
 
 local split_sizes = {1, 0, 0} 
-data_dir = 'data/nba'
-local loader = Comment2VoteSGDLoader.create(data_dir, split_sizes)
+data_dir = 'data/nba2'
+local loader = Comment2VoteSGDLoader.create(data_dir, batch_size, split_sizes)
 vocab_size = loader.vocab_size
 
 encode, decode = {}, {}
@@ -39,7 +40,7 @@ end
 
 local init_state = {}
 for i=1, num_layers do
-	local h_init = torch.zeros(1, rnn_size)
+	local h_init = torch.zeros(batch_size, rnn_size)
 	table.insert(init_state, h_init:clone())
 	table.insert(init_state, h_init:clone())
 end
@@ -56,8 +57,8 @@ function feval(x)
 	grad_params:zero()
 
 	-- get minibatch
-	local x, y = loader:next_batch()
-	in_length = x:nElement()
+	local x, y = loader:nextbatch()
+	in_length = x:select(1,1):nElement()
 
 	---------- FORWARD PASS ---------------------
 	-- clone encoding LSTM
@@ -65,7 +66,6 @@ function feval(x)
 	for name, proto in pairs(encode) do
 		eclone[name] = model_utils.clone_many_times(proto, in_length, not proto.parameters)
 	end
-
 	local en_rnn_state = {[0] = init_global_state}
 	for t=1,in_length do
 		eclone.rnn[t]:training()
@@ -76,14 +76,14 @@ function feval(x)
 
 	local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state]}
 	dclone.rnn[1]:training()
-	local lst = dclone.rnn[1]:forward{torch.DoubleTensor({-1}):view(1,1), unpack(dec_rnn_state[0])}
+	local lst = dclone.rnn[1]:forward{torch.DoubleTensor(batch_size, 1):fill(-1), unpack(dec_rnn_state[0])}
 	dec_rnn_state[1] = {}
 	for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
-	local loss = dclone.criterion[1]:forward(lst[#lst], y:view(1,1))
+	local loss = dclone.criterion[1]:forward(lst[#lst], y)
 
 	-- -- -- ------- BACKWARD PASS --------------------
 	local ddec_rnn_state = {[1] = clone_list(init_state)}
-	doutput = dclone.criterion[1]:backward(lst[#lst], y:view(1,1))
+	doutput = dclone.criterion[1]:backward(lst[#lst], y)
 	table.insert(ddec_rnn_state[1], doutput)
 	local dh = dclone.rnn[1]:backward({torch.DoubleTensor({-1}):view(1,1), unpack(dec_rnn_state[0])}, ddec_rnn_state[1])
 	ddec_rnn_state[0] = {}
@@ -118,9 +118,9 @@ for i = 1, iterations do
     local epoch = i / loader.ntrain
 
     local timer = torch.Timer()
-    local _, loss = optim.sgd(feval, params, state)
+    -- local _, loss = optim.sgd(feval, params, state)
+    local _, loss = optim.rmsprop(feval, params, optim_state)
     local time = timer:time().real
-    print(loss)
 
     local train_loss = loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
@@ -134,7 +134,7 @@ for i = 1, iterations do
         end
     end
 
-    if i % 10 == 0 then
+    if i % 1 == 0 then
         print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.2fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
     end
    

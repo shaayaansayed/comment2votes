@@ -1,7 +1,7 @@
 local Comment2VoteSGDLoader = {}
 Comment2VoteSGDLoader.__index = Comment2VoteSGDLoader
 
-function Comment2VoteSGDLoader.create(data_dir, split_fractions)
+function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 	local self = {}
 	setmetatable(self, Comment2VoteSGDLoader)
 
@@ -40,11 +40,48 @@ function Comment2VoteSGDLoader.create(data_dir, split_fractions)
 		self.vocab_size = self.vocab_size + 1
 	end
 
-	self.ntrain = self.scores:nElement()
+	self.num_comments = 0
+	for _ in pairs(self.comments) do 
+		self.num_comments = self.num_comments + 1
+	end
+
+	print('making even bathes...')
+	if self.num_comments % batch_size ~= 0 then
+		repeat 
+			table.remove(self.comments, self.num_comments)
+			table.remove(self.scores, self.num_comments)
+			self.num_comments = self.num_comments - 1
+		until self.num_comments % batch_size == 0
+	end
+
+	self.ntrain = self.num_comments / batch_size
+
+	print('preparing batches...')
+	self.batch_comments = {}
+	self.batch_scores = {}
+	for i=1, self.ntrain do
+		local max_length = self.comments[i*batch_size]:nElement()
+		local batch_comment = torch.ByteTensor(batch_size, max_length):fill(self.vocab_size+1)
+		local batch_score = torch.DoubleTensor(batch_size, 1)
+		for k=1, batch_size do
+			local comment = self.comments[(i-1)*batch_size + k]
+			local score = self.scores[(i-1)*batch_size + k]
+			batch_comment:select(1, k):sub(1, comment:nElement()):copy(comment)
+			batch_score:select(1, k):copy(score)
+		end
+		table.insert(self.batch_comments, batch_comment)
+		table.insert(self.batch_scores, batch_score)
+	end
+
 	self.batch_ix = 0
 	collectgarbage()
 
 	return self
+end
+
+function Comment2VoteSGDLoader:nextbatch()
+	self.batch_ix = self.batch_ix + 1
+	return self.batch_comments[self.batch_ix], self.batch_scores[self.batch_ix]
 end
 
 function Comment2VoteSGDLoader:next_batch()
@@ -100,24 +137,41 @@ function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_fi
 	print('putting comments into tensor...')
 	comments = {}
 	f = io.open(comment_file)
-	ix = 0
 	for i=1,num_comments do
 		rawdata = f:read()
-		comment = torch.ByteTensor(1, #rawdata)
-		for k=1,#rawdata do
-			comment[{{}, k}] = vocab_mapping[rawdata:sub(k,k)]
+		if #rawdata == 0 then
+			num_comments = num_comments - 1
+		else
+			comment = torch.ByteTensor(1, #rawdata)
+			for k=1,#rawdata do
+				comment[{{}, k}] = vocab_mapping[rawdata:sub(k,k)]
+			end
+			table.insert(comments, {comment, scores[{{}, i}]})
 		end
-		table.insert(comments, comment)
 	end
 	f:close()
+
+	print('sorting comments...')
+	table.sort(comments, compare)
+
+	sorted_comments = {}
+	sorted_scores = {}
+	for i=1,num_comments do
+		table.insert(sorted_comments, comments[i][1])
+		table.insert(sorted_scores, comments[i][2])
+	end
 
 	print('saving ' .. vocab_file)
 	torch.save(vocab_file, vocab_mapping)
 	print('saving ' .. tensor_comment_file)
-	torch.save(tensor_comment_file, comments)
+	torch.save(tensor_comment_file, sorted_comments)
 	print('saving ' .. tensor_score_file)
-	torch.save(tensor_score_file, scores)
+	torch.save(tensor_score_file, sorted_scores)
 
+end
+
+function compare(a, b)
+	return a[1]:nElement() < b[1]:nElement()
 end
 
 return Comment2VoteSGDLoader
