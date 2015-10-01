@@ -4,4 +4,4 @@ Torch implementation of recurrent network architecture that predicts the number 
 
 The architecture has an encode and decode stage. The encode stage takes in char values. The decode stage is prompted by an EOS tag (-1 in the current implementation) and outputs a number representing the predicted votes. 
 
-Note: This project is for learning purposes. The code is heavily influenced and at many points identifical (especially the util directory) to [Andrej Karpathy's char-rnn.](https://github.com/karpathy/char-rnn/blob/master/Readme.md)
+Note: This project is for learning purposes. The code is heavily influenced and at many points adapted (especially the util directory) from [Andrej Karpathy's char-rnn.](https://github.com/karpathy/char-rnn/blob/master/Readme.md)
