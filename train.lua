@@ -57,7 +57,7 @@ function feval(x)
 	grad_params:zero()
 
 	-- get minibatch
-	local x, y = loader:nextbatch()
+	local x, y = loader:next_batch()
 	in_length = x:select(1,1):nElement()
 
 	---------- FORWARD PASS ---------------------
