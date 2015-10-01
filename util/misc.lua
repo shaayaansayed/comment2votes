@@ -1,5 +1,6 @@
 
 -- misc utilities
+-- taken from: https://github.com/karpathy/char-rnn/blob/master/util/misc.lua
 
 function clone_list(tensor_list, zero_too)
     -- utility function. todo: move away to some utils file?
