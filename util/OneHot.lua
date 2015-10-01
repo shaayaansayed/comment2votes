@@ -1,3 +1,4 @@
+-- adapted from: https://github.com/karpathy/char-rnn/blob/master/util/OneHot.lua
 
 local OneHot, parent = torch.class('OneHot', 'nn.Module')
 
