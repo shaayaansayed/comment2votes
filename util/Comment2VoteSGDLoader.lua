@@ -86,6 +86,7 @@ end
 
 function Comment2VoteSGDLoader:next_batch()
 	self.batch_ix = self.batch_ix + 1
+	--return self.comments[self.batch_ix], self.scores[{{}, self.batch_ix}]
 	return self.comments[self.batch_ix], self.scores[{{}, self.batch_ix}]
 end
 
@@ -111,6 +112,13 @@ function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_fi
 		scores[{{}, i}] = tonumber(c:read())
 	end
 	c:close()
+
+	--normalize socres
+	local mean = scores:mean()
+	local std = scores:std()
+	scores:add(-mean)
+	scores:div(std)
+	--local dbg=require("debugger"); dbg()
 
 	print('loading comment file and creating vocabulary mapping...')
 
