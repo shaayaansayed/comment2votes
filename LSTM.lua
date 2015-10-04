@@ -14,10 +14,11 @@ function LSTM.create(input_size, output_size, rnn_size, n, is_dec)
 		if L == 1 then
 			if is_dec == 1 then
 				x = inputs[1]
+				input_size_L = rnn_size
 			else
 				x = OneHot(input_size)(inputs[1])
+				input_size_L = input_size
 			end
-			input_size_L = input_size
 		else 
 			x = outputs[(L-1)*2]
 			input_size_L = rnn_size
