@@ -17,7 +17,7 @@ cmd:text('Train a character-level language model')
 cmd:text()
 cmd:text('Options')
 -- data
-cmd:option('-data_dir','data/nba2','data directory. Should contain the file input.txt with input data')
+cmd:option('-data_dir','data/test','data directory. Should contain the file input.txt with input data')
 -- model params
 cmd:option('-rnn_size', 128, 'size of LSTM internal state')
 cmd:option('-num_layers', 2, 'number of layers in the LSTM')
@@ -78,7 +78,7 @@ for name,proto in pairs(decode) do
 end
 
 eclone = {}
-local max_enc_len = 128
+local max_enc_len = 500
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end

@@ -73,14 +73,14 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 		table.insert(self.batch_scores, batch_score)
 	end
 
-	self.batch_ix = 1000
+	self.batch_ix = 0
 	collectgarbage()
 
 	return self
 end
 
 function Comment2VoteSGDLoader:nextbatch()
-	-- self.batch_ix = self.batch_ix + 1
+	self.batch_ix = self.batch_ix + 1
 	return self.batch_comments[self.batch_ix], self.batch_scores[self.batch_ix]
 end
 
