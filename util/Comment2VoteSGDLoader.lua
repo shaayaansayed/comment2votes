@@ -73,21 +73,15 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 		table.insert(self.batch_scores, batch_score)
 	end
 
-	self.batch_ix = 0
+	self.batch_ix = 1000
 	collectgarbage()
 
 	return self
 end
 
 function Comment2VoteSGDLoader:nextbatch()
-	self.batch_ix = self.batch_ix + 1
+	-- self.batch_ix = self.batch_ix + 1
 	return self.batch_comments[self.batch_ix], self.batch_scores[self.batch_ix]
-end
-
-function Comment2VoteSGDLoader:next_batch()
-	self.batch_ix = self.batch_ix + 1
-	--return self.comments[self.batch_ix], self.scores[{{}, self.batch_ix}]
-	return self.comments[self.batch_ix], self.scores[{{}, self.batch_ix}]
 end
 
 function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_file, tensor_comment_file, tensor_score_file)
