@@ -56,7 +56,7 @@ if opt.gpuid >=0 then
   local ok, cunn = pcall(require, 'cunn')
   assert(ok, 'package cunn not found!')
   local ok, cutorch = pcall(require, 'cutorch')
-  cutorch.setDevice(gpuid+1) 
+  cutorch.setDevice(opt.gpuid+1) 
 end
 
 encode, decode = {}, {}
