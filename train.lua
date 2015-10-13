@@ -119,7 +119,7 @@ function eval_split(split_index, max_batches)
 		end
 
         -- forward pass
-		local en_rnn_state = {[0] = init_global_state}
+		local en_rnn_state = {[0] = init_state}
 		for t=1,in_length do
 			eclone.rnn[t]:training()
 			local lst = eclone.rnn[t]:forward{x[{{}, t}], unpack(en_rnn_state[t-1])}
