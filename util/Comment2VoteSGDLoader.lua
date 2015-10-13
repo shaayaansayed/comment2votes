@@ -44,6 +44,7 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 	for _ in pairs(self.comments) do 
 		self.num_comments = self.num_comments + 1
 	end
+	self.batch_size = batch_size
 
 	print('making even bathes...')
 	if self.num_comments % batch_size ~= 0 then
@@ -88,19 +89,20 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
         self.ntest = self.nbatches - self.nval - self.ntrain -- the rest goes to test (to ensure this adds up exactly)
     end
 
+    self.batchperm = torch.randperm(#self.batch_comments)
     self.split_sizes = {self.ntrain, self.nval, self.ntest}
     self.batch_ix = {0,0,0}
 
 	collectgarbage()
-
+	print('batches ready...')
 	return self
 end
 
 function Comment2VoteSGDLoader:largest_comment_size()
-	return self.batch_comments[#self.batch_comments]:nElement()
+	return self.batch_comments[#self.batch_comments]:nElement()/self.batch_size
 end
 
-function Comment2VoteSGDLoader:nextbatch(split_index)
+function Comment2VoteSGDLoader:next_batch(split_index)
 	self.batch_ix[split_index] = self.batch_ix[split_index] + 1
 	if self.batch_ix[split_index] > self.split_sizes[split_index] then
 		self.batch_ix[split_index] = 1
@@ -109,7 +111,11 @@ function Comment2VoteSGDLoader:nextbatch(split_index)
 	local ix = self.batch_ix[split_index]
 	if split_index == 2 then ix = ix + self.ntrain end 
 	if split_index == 3 then ix = ix + self.ntrain + self.nval end
-	return self.batch_comments[ix], self.batch_scores[ix]
+	return self.batch_comments[self.batchperm[ix]], self.batch_scores[self.batchperm[ix]]
+end
+
+function Comment2VoteSGDLoader:reset_batch_pointer(split_index)
+	self.batch_ix[split_index] = 0
 end
 
 function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_file, tensor_comment_file, tensor_score_file)
