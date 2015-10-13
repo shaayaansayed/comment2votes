@@ -100,47 +100,47 @@ local t_vec = torch.DoubleTensor(opt.batch_size, 1)
 if opt.gpuid >= 0 then t_vec = t_vec:cuda() end
 t_vec:fill(-1)
 
-function eval_split(split_index, max_batches)
-    print('evaluating loss over validation set...')
-    local n = loader.split_sizes[split_index]
-    if max_batches ~= nil then n = math.min(max_batches, n) end
+-- function eval_split(split_index, max_batches)
+--     print('evaluating loss over validation set...')
+--     local n = loader.split_sizes[split_index]
+--     if max_batches ~= nil then n = math.min(max_batches, n) end
 
-    loader:reset_batch_pointer(split_index) -- move batch iteration pointer for this split to front
-    local loss = 0
-	local en_rnn_state = {[0] = init_state}
+--     loader:reset_batch_pointer(split_index) -- move batch iteration pointer for this split to front
+--     local loss = 0
+-- 	local en_rnn_state = {[0] = init_state}
     
-    for i = 1,n do -- iterate over batches in the split
-        -- fetch a batch
-        local x, y = loader:next_batch(split_index)
+--     for i = 1,n do -- iterate over batches in the split
+--         -- fetch a batch
+--         local x, y = loader:next_batch(split_index)
 
-        if opt.gpuid >= 0 then
-	  		x = x:float():cuda()
-	  		y = y:float():cuda()
-		end
+--         if opt.gpuid >= 0 then
+-- 	  		x = x:float():cuda()
+-- 	  		y = y:float():cuda()
+-- 		end
 
-        -- forward pass
-		for t=1,in_length do
-			eclone.rnn[t]:training()
-			local lst = eclone.rnn[t]:forward{x[{{}, t}], unpack(en_rnn_state[t-1])}
-			en_rnn_state[t] = {}
-			for k=1, #init_state do table.insert(en_rnn_state[t], lst[k]) end
-		end
+--         -- forward pass
+-- 		for t=1,in_length do
+-- 			eclone.rnn[t]:training()
+-- 			local lst = eclone.rnn[t]:forward{x[{{}, t}], unpack(en_rnn_state[t-1])}
+-- 			en_rnn_state[t] = {}
+-- 			for k=1, #init_state do table.insert(en_rnn_state[t], lst[k]) end
+-- 		end
 
-		local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state]}
-		dclone.rnn[1]:training()
-		local lst = dclone.rnn[1]:forward{t_vec, unpack(dec_rnn_state[0])}
-		dec_rnn_state[1] = {}
-		for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
-		loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
-		print(i .. '/' .. n .. '...' )
-        -- carry over lstm state
-        en_rnn_state[0] = en_rnn_state[#en_rnn_state]
-    end
+-- 		local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state]}
+-- 		dclone.rnn[1]:training()
+-- 		local lst = dclone.rnn[1]:forward{t_vec, unpack(dec_rnn_state[0])}
+-- 		dec_rnn_state[1] = {}
+-- 		for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
+-- 		loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
+-- 		print(i .. '/' .. n .. '...' )
+--         -- carry over lstm state
+--         en_rnn_state[0] = en_rnn_state[#en_rnn_state]
+--     end
 
-    loss = loss / n
-    print('total average validation loss: ' .. loss)
-    return loss
-end
+--     loss = loss / n
+--     print('total average validation loss: ' .. loss)
+--     return loss
+-- end
 
 init_global_state = clone_list(init_state)
 function feval(x)
@@ -152,7 +152,6 @@ function feval(x)
 	grad_params:zero()
 
 	-- get minibatch
-	--local x, y = loader:next_batch()
 	local x, y = loader:next_batch(1)
 	in_length = x:select(1,1):nElement()
 	assert(in_length <= max_enc_len)
@@ -232,24 +231,24 @@ for i = 1, iterations do
         end
     end
 
-    if i % opt.eval_val_every == 0 or i == iterations then
-        -- evaluate loss on validation data
-        local val_loss = eval_split(2) -- 2 = validation
-        val_losses[i] = val_loss
+    -- if i % opt.eval_val_every == 0 or i == iterations then
+    --     -- evaluate loss on validation data
+    --     local val_loss = eval_split(2) -- 2 = validation
+    --     val_losses[i] = val_loss
 
-        local savefile = string.format('%s/lm_%s_epoch%.2f_%.4f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
-        print('saving checkpoint to ' .. savefile)
-        local checkpoint = {}
-        checkpoint.protos = protos
-        checkpoint.opt = opt
-        checkpoint.train_losses = train_losses
-        checkpoint.val_loss = val_loss
-        checkpoint.val_losses = val_losses
-        checkpoint.i = i
-        checkpoint.epoch = epoch
-        checkpoint.vocab = loader.vocab_mapping
-        torch.save(savefile, checkpoint)
-    end
+    --     local savefile = string.format('%s/lm_%s_epoch%.2f_%.4f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
+    --     print('saving checkpoint to ' .. savefile)
+    --     local checkpoint = {}
+    --     checkpoint.protos = protos
+    --     checkpoint.opt = opt
+    --     checkpoint.train_losses = train_losses
+    --     checkpoint.val_loss = val_loss
+    --     checkpoint.val_losses = val_losses
+    --     checkpoint.i = i
+    --     checkpoint.epoch = epoch
+    --     checkpoint.vocab = loader.vocab_mapping
+    --     torch.save(savefile, checkpoint)
+    -- end
 
     if i % opt.print_every == 0 then
         print(string.format("%d/%d (epoch %.3f), train_loss = %6.8f, grad/param norm = %6.4e, time/batch = %.2fs", i, iterations, epoch, train_loss, grad_params:norm() / params:norm(), time))
