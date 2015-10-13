@@ -29,7 +29,7 @@ cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start d
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-batch_size',50,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',50,'number of full passes through the training data')
+cmd:option('-max_epochs',10,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
 cmd:option('-val_frac',0.05,'fraction of data that goes into validation set')
@@ -52,6 +52,7 @@ local test_frac = math.max(0, 1 - (opt.train_frac + opt.val_frac))
 local split_sizes = {opt.train_frac, opt.val_frac, test_frac} 
 local loader = Comment2VoteSGDLoader.create(opt.data_dir, opt.batch_size, split_sizes)
 vocab_size = loader.vocab_size
+assert(loader:largest_comment_size() <= 500)
 
 if opt.gpuid >=0 then
   local ok, cunn = pcall(require, 'cunn')
@@ -73,17 +74,19 @@ end
 params, grad_params = model_utils.combine_all_parameters(encode.rnn, decode.rnn)
 params:uniform(-.08, .08)
 
+print('cloning encoder and decoder...')
 dclone = {}
 for name,proto in pairs(decode) do
 	dclone[name] = model_utils.clone_many_times(proto, 1, not proto.parameters)
 end
 
 eclone = {}
-local max_enc_len = loader:largest_comment_size()
+-- local max_enc_len = loader:largest_comment_size()
+local max_enc_len = 20
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
-print('here?')
+
 local init_state = {}
 for i=1, opt.num_layers do
 	local h_init = torch.zeros(opt.batch_size, opt.rnn_size)
@@ -98,8 +101,50 @@ local t_vec = torch.DoubleTensor(opt.batch_size, 1)
 if opt.gpuid >= 0 then t_vec = t_vec:cuda() end
 t_vec:fill(-1)
 
-init_global_state = clone_list(init_state)
+function eval_split(split_index, max_batches)
+    print('evaluating loss over validation set...')
+    local n = loader.split_sizes[split_index]
+    if max_batches ~= nil then n = math.min(max_batches, n) end
 
+    loader:reset_batch_pointer(split_index) -- move batch iteration pointer for this split to front
+    local loss = 0
+    local rnn_state = {[0] = init_state}
+    
+    for i = 1,n do -- iterate over batches in the split
+        -- fetch a batch
+        local x, y = loader:next_batch(split_index)
+
+        if opt.gpuid >= 0 then
+	  		x = x:float():cuda()
+	  		y = y:float():cuda()
+		end
+
+        -- forward pass
+		local en_rnn_state = {[0] = init_global_state}
+		for t=1,in_length do
+			eclone.rnn[t]:training()
+			local lst = eclone.rnn[t]:forward{x[{{}, t}], unpack(en_rnn_state[t-1])}
+			en_rnn_state[t] = {}
+			for k=1, #init_state do table.insert(en_rnn_state[t], lst[k]) end
+		end
+
+		local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state]}
+		dclone.rnn[1]:training()
+		local lst = dclone.rnn[1]:forward{t_vec, unpack(dec_rnn_state[0])}
+		dec_rnn_state[1] = {}
+		for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
+		local loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
+		print(i .. '/' .. n .. '...' )
+        -- carry over lstm state
+        rnn_state[0] = rnn_state[#rnn_state]
+    end
+
+    loss = loss / n
+    print('total average validation loss: ' .. loss)
+    return loss
+end
+
+init_global_state = clone_list(init_state)
 function feval(x)
 	-- update paramaters
 	if x ~= params then
@@ -110,7 +155,7 @@ function feval(x)
 
 	-- get minibatch
 	--local x, y = loader:next_batch()
-	local x, y = loader:nextbatch(1)
+	local x, y = loader:next_batch(1)
 	in_length = x:select(1,1):nElement()
 	assert(in_length <= max_enc_len)
 
@@ -186,7 +231,7 @@ for i = 1, iterations do
 		loader.batch_ix = 0
     end
 
-    if i % opt.eval_val_every == 0 or i == iterations then
+    if i % opt.eval_val_every == 0 or i == iterations or i==1 then
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
         val_losses[i] = val_loss
