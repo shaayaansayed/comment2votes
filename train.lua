@@ -81,8 +81,7 @@ for name,proto in pairs(decode) do
 end
 
 eclone = {}
--- local max_enc_len = loader:largest_comment_size()
-local max_enc_len = 20
+local max_enc_len = loader:largest_comment_size()
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
@@ -221,6 +220,10 @@ for i = 1, iterations do
     local train_loss = loss[1] -- the loss is inside a list, pop it
     train_losses[i] = train_loss
 
+	if opt.accurate_gpu_timing == 1 and opt.gpuid >= 0 then
+        cutorch.synchronize()
+    end
+
     -- exponential learning rate decay
     if i % loader.ntrain == 0 and opt.learning_rate_decay < 1 then
         if epoch >= opt.learning_rate_decay_after then
@@ -228,10 +231,9 @@ for i = 1, iterations do
             optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
             print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
         end
-		loader.batch_ix = 0
     end
 
-    if i % opt.eval_val_every == 0 or i == iterations or i==1 then
+    if i % opt.eval_val_every == 0 or i == iterations then
         -- evaluate loss on validation data
         local val_loss = eval_split(2) -- 2 = validation
         val_losses[i] = val_loss
