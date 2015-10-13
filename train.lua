@@ -131,7 +131,7 @@ function eval_split(split_index, max_batches)
 		local lst = dclone.rnn[1]:forward{t_vec, unpack(dec_rnn_state[0])}
 		dec_rnn_state[1] = {}
 		for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
-		local loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
+		loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
 		print(i .. '/' .. n .. '...' )
         -- carry over lstm state
         en_rnn_state[0] = en_rnn_state[#en_rnn_state]
