@@ -107,7 +107,7 @@ function eval_split(split_index, max_batches)
 
     loader:reset_batch_pointer(split_index) -- move batch iteration pointer for this split to front
     local loss = 0
-    local rnn_state = {[0] = init_state}
+	local en_rnn_state = {[0] = init_state}
     
     for i = 1,n do -- iterate over batches in the split
         -- fetch a batch
@@ -119,7 +119,6 @@ function eval_split(split_index, max_batches)
 		end
 
         -- forward pass
-		local en_rnn_state = {[0] = init_state}
 		for t=1,in_length do
 			eclone.rnn[t]:training()
 			local lst = eclone.rnn[t]:forward{x[{{}, t}], unpack(en_rnn_state[t-1])}
@@ -135,7 +134,7 @@ function eval_split(split_index, max_batches)
 		local loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
 		print(i .. '/' .. n .. '...' )
         -- carry over lstm state
-        rnn_state[0] = rnn_state[#rnn_state]
+        en_rnn_state[0] = en_rnn_state[#en_rnn_state]
     end
 
     loss = loss / n
