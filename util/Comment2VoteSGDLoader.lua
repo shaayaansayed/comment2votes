@@ -54,12 +54,12 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 		until self.num_comments % batch_size == 0
 	end
 
-	self.ntrain = self.num_comments / batch_size
+	self.nbatches = self.num_comments / batch_size
 
 	print('preparing batches...')
 	self.batch_comments = {}
 	self.batch_scores = {}
-	for i=1, self.ntrain do
+	for i=1, self.nbatches do
 		local max_length = self.comments[i*batch_size]:nElement()
 		local batch_comment = torch.ByteTensor(batch_size, max_length):fill(self.vocab_size+1)
 		local batch_score = torch.DoubleTensor(batch_size, 1)
@@ -73,15 +73,43 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 		table.insert(self.batch_scores, batch_score)
 	end
 
-	self.batch_ix = 0
+	assert(split_fractions[1] >= 0 and split_fractions[1] <= 1, 'bad split fraction ' .. split_fractions[1] .. ' for train, not between 0 and 1')
+    assert(split_fractions[2] >= 0 and split_fractions[2] <= 1, 'bad split fraction ' .. split_fractions[2] .. ' for val, not between 0 and 1')
+    assert(split_fractions[3] >= 0 and split_fractions[3] <= 1, 'bad split fraction ' .. split_fractions[3] .. ' for test, not between 0 and 1')
+    if split_fractions[3] == 0 then 
+        -- catch a common special case where the user might not want a test set
+        self.ntrain = math.floor(self.nbatches * split_fractions[1])
+        self.nval = self.nbatches - self.ntrain
+        self.ntest = 0
+    else
+        -- divide data to train/val and allocate rest to test
+        self.ntrain = math.floor(self.nbatches * split_fractions[1])
+        self.nval = math.floor(self.nbatches * split_fractions[2])
+        self.ntest = self.nbatches - self.nval - self.ntrain -- the rest goes to test (to ensure this adds up exactly)
+    end
+
+    self.split_sizes = {self.ntrain, self.nval, self.ntest}
+    self.batch_ix = {0,0,0}
+
 	collectgarbage()
 
 	return self
 end
 
-function Comment2VoteSGDLoader:nextbatch()
-	self.batch_ix = self.batch_ix + 1
-	return self.batch_comments[self.batch_ix], self.batch_scores[self.batch_ix]
+function Comment2VoteSGDLoader:largest_comment_size()
+	return self.batch_comments[#self.batch_comments]:nElement()
+end
+
+function Comment2VoteSGDLoader:nextbatch(split_index)
+	self.batch_ix[split_index] = self.batch_ix[split_index] + 1
+	if self.batch_ix[split_index] > self.split_sizes[split_index] then
+		self.batch_ix[split_index] = 1
+	end
+
+	local ix = self.batch_ix[split_index]
+	if split_index == 2 then ix = ix + self.ntrain end 
+	if split_index == 3 then ix = ix + self.ntrain + self.nval end
+	return self.batch_comments[ix], self.batch_scores[ix]
 end
 
 function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_file, tensor_comment_file, tensor_score_file)

@@ -48,7 +48,8 @@ cmd:text()
 opt = cmd:parse(arg)
 torch.manualSeed(opt.seed)
 
-local split_sizes = {1, 0, 0} 
+local test_frac = math.max(0, 1 - (opt.train_frac + opt.val_frac))
+local split_sizes = {opt.train_frac, opt.val_frac, test_frac} 
 local loader = Comment2VoteSGDLoader.create(opt.data_dir, opt.batch_size, split_sizes)
 vocab_size = loader.vocab_size
 
@@ -78,11 +79,11 @@ for name,proto in pairs(decode) do
 end
 
 eclone = {}
-local max_enc_len = 500
+local max_enc_len = loader:largest_comment_size()
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
-
+print('here?')
 local init_state = {}
 for i=1, opt.num_layers do
 	local h_init = torch.zeros(opt.batch_size, opt.rnn_size)
@@ -109,7 +110,7 @@ function feval(x)
 
 	-- get minibatch
 	--local x, y = loader:next_batch()
-	local x, y = loader:nextbatch()
+	local x, y = loader:nextbatch(1)
 	in_length = x:select(1,1):nElement()
 	assert(in_length <= max_enc_len)
 
@@ -183,6 +184,25 @@ for i = 1, iterations do
             print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
         end
 		loader.batch_ix = 0
+    end
+
+    if i % opt.eval_val_every == 0 or i == iterations then
+        -- evaluate loss on validation data
+        local val_loss = eval_split(2) -- 2 = validation
+        val_losses[i] = val_loss
+
+        local savefile = string.format('%s/lm_%s_epoch%.2f_%.4f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
+        print('saving checkpoint to ' .. savefile)
+        local checkpoint = {}
+        checkpoint.protos = protos
+        checkpoint.opt = opt
+        checkpoint.train_losses = train_losses
+        checkpoint.val_loss = val_loss
+        checkpoint.val_losses = val_losses
+        checkpoint.i = i
+        checkpoint.epoch = epoch
+        checkpoint.vocab = loader.vocab_mapping
+        torch.save(savefile, checkpoint)
     end
 
     if i % opt.print_every == 0 then
