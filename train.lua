@@ -79,7 +79,7 @@ end
 
 print('cloning encoder...')
 eclone = {}
-local max_enc_len = 500
+local max_enc_len = 20
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
@@ -99,7 +99,6 @@ if opt.gpuid >= 0 then t_vec = t_vec:cuda() end
 t_vec:fill(-1)
 
 init_global_state = clone_list(init_state)
-
 function feval(x)
 	-- update paramaters
 	if x ~= params then
@@ -110,7 +109,7 @@ function feval(x)
 
 	-- get minibatch
 	--local x, y = loader:next_batch()
-	local x, y = loader:nextbatch()
+	local x, y = loader:next_batch()
 	in_length = x:select(1,1):nElement()
 	assert(in_length <= max_enc_len)
 

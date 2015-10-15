@@ -74,14 +74,15 @@ function Comment2VoteSGDLoader.create(data_dir, batch_size, split_fractions)
 	end
 
 	self.batch_ix = 0
+	self.batchperm = torch.randperm(#self.batch_comments)
 	collectgarbage()
 
 	return self
 end
 
-function Comment2VoteSGDLoader:nextbatch()
+function Comment2VoteSGDLoader:next_batch()
 	self.batch_ix = self.batch_ix + 1
-	return self.batch_comments[self.batch_ix], self.batch_scores[self.batch_ix]
+	return self.batch_comments[self.batchperm[self.batch_ix]], self.batch_scores[self.batchperm[self.batch_ix]]
 end
 
 function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_file, tensor_comment_file, tensor_score_file)
