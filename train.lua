@@ -29,7 +29,7 @@ cmd:option('-learning_rate_decay_after',10,'in number of epochs, when to start d
 cmd:option('-decay_rate',0.95,'decay rate for rmsprop')
 cmd:option('-dropout',0,'dropout for regularization, used after each RNN hidden layer. 0 = no dropout')
 cmd:option('-batch_size',50,'number of sequences to train on in parallel')
-cmd:option('-max_epochs',50,'number of full passes through the training data')
+cmd:option('-max_epochs',5,'number of full passes through the training data')
 cmd:option('-grad_clip',5,'clip gradients at this value')
 cmd:option('-train_frac',0.95,'fraction of data that goes into train set')
 cmd:option('-val_frac',0.05,'fraction of data that goes into validation set')
@@ -40,7 +40,7 @@ cmd:option('-seed',123,'torch manual random number generator seed')
 cmd:option('-print_every',1,'how many steps/minibatches between printing out the loss')
 cmd:option('-eval_val_every',1000,'every how many iterations should we evaluate on validation data?')
 cmd:option('-checkpoint_dir', 'cv', 'output directory where checkpoints get written')
-cmd:option('-savefile','lstm','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
+cmd:option('-savefile','lm','filename to autosave the checkpont to. Will be inside checkpoint_dir/')
 -- GPU/CPU
 cmd:option('-gpuid',-1,'which gpu to use. -1 = use CPU')
 cmd:text()
@@ -86,7 +86,7 @@ for name,proto in pairs(decode) do
 end
 
 eclone = {}
-local max_enc_len = 10
+local max_enc_len = 20
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
@@ -104,6 +104,47 @@ end
 local t_vec = torch.DoubleTensor(opt.batch_size, 1)
 if opt.gpuid >= 0 then t_vec = t_vec:cuda() end
 t_vec:fill(-1)
+
+ function eval_split(split_index)
+	 print('evaluating loss over validation set...')
+	 local n = loader.split_sizes[split_index]
+
+	loader:reset_batch_pointer(split_index) -- move batch iteration pointer for this split to front
+	local loss = 0
+	local en_rnn_state = {[0] = init_state}
+
+	for i = 1,n do -- iterate over batches in the split
+		-- fetch a batch
+		local x, y = loader:next_batch(split_index)
+
+		if opt.gpuid >= 0 then
+				x = x:float():cuda()
+				y = y:float():cuda()
+		end
+
+		-- forward pass
+		for t=1,in_length do
+			eclone.rnn[t]:training()
+			local lst = eclone.rnn[t]:forward{x[{{}, t}], unpack(en_rnn_state[t-1])}
+			en_rnn_state[t] = {}
+			for k=1, #init_state do table.insert(en_rnn_state[t], lst[k]) end
+		end
+
+		local dec_rnn_state = {[0] = en_rnn_state[#en_rnn_state]}
+		dclone.rnn[1]:training()
+		local lst = dclone.rnn[1]:forward{t_vec, unpack(dec_rnn_state[0])}
+		dec_rnn_state[1] = {}
+		for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
+		loss = loss + dclone.criterion[1]:forward(lst[#lst], y)
+		print(i .. '/' .. n .. '...' )
+		-- carry over lstm state
+		en_rnn_state[0] = en_rnn_state[#en_rnn_state]
+     end
+ 
+	loss = loss / n
+	print('total average validation loss: ' .. loss)
+	return loss
+ end
 
 init_global_state = clone_list(init_state)
 function feval(x)
@@ -187,6 +228,26 @@ for i = 1, iterations do
             optim_state.learningRate = optim_state.learningRate * decay_factor -- decay it
             print('decayed learning rate by a factor ' .. decay_factor .. ' to ' .. optim_state.learningRate)
         end
+    end
+
+
+	if i % opt.eval_val_every == 0 or i == iterations or i == 1 then
+		-- evaluate loss on validation data
+		local val_loss = eval_split(2) -- 2 = validation
+		val_losses[i] = val_loss
+
+		local savefile = string.format('%s/%s_epoch%.2f_%.4f.t7', opt.checkpoint_dir, opt.savefile, epoch, val_loss)
+		print('saving checkpoint to ' .. savefile)
+		local checkpoint = {}
+		checkpoint.protos = protos
+		checkpoint.opt = opt
+		checkpoint.train_losses = train_losses
+		checkpoint.val_loss = val_loss
+		checkpoint.val_losses = val_losses
+		checkpoint.i = i
+		checkpoint.epoch = epoch
+		checkpoint.vocab = loader.vocab_mapping
+		torch.save(savefile, checkpoint)
     end
 
     if i % opt.print_every == 0 then

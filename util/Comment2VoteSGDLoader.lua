@@ -112,6 +112,10 @@ function Comment2VoteSGDLoader:next_batch(split_index)
 	return self.batch_comments[self.batch_list_perm[ix]], self.batch_scores[self.batch_list_perm[ix]]
 end
 
+function Comment2VoteSGDLoader:reset_batch_pointer(split_index)
+	self.batch_ix[split_index] = 1
+end
+
 function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_file, tensor_comment_file, tensor_score_file)
 
 	local rawdata
