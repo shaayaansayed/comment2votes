@@ -48,10 +48,6 @@ cmd:text()
 opt = cmd:parse(arg)
 torch.manualSeed(opt.seed)
 
-local split_sizes = {1, 0, 0} 
-local loader = Comment2VoteSGDLoader.create(opt.data_dir, opt.batch_size, split_sizes)
-vocab_size = loader.vocab_size
-
 if opt.gpuid >=0 then
   local ok, cunn = pcall(require, 'cunn')
   assert(ok, 'package cunn not found!')
@@ -59,6 +55,14 @@ if opt.gpuid >=0 then
   cutorch.setDevice(opt.gpuid+1) 
 end
 
+-- train/val/test splits for data 
+local test_frac = math.max(0, 1 - (opt.train_frac + opt.val_frac))
+local split_sizes = {opt.train_frac, opt.val_frac, test_frac} 
+-- create data loader 
+local loader = Comment2VoteSGDLoader.create(opt.data_dir, opt.batch_size, split_sizes)
+vocab_size = loader.vocab_size
+
+-- create encoder and decoder
 encode, decode = {}, {}
 encode.rnn = LSTM.create(vocab_size, vocab_size, opt.rnn_size, opt.num_layers, 0)
 decode.rnn = LSTM.create(1, 1, opt.rnn_size, opt.num_layers, 1)
@@ -69,21 +73,25 @@ if opt.gpuid >=0 then
     for k,v in pairs(decode) do v:cuda() end
 end
 
+-- returns combined flattened tensors for total parameters in both encoder and decoder 
 params, grad_params = model_utils.combine_all_parameters(encode.rnn, decode.rnn)
+-- initialize all weights
 params:uniform(-.08, .08)
+print('number of parameters in the model: ' .. params:nElement())
 
+print('cloning encoder and decoder...')
 dclone = {}
 for name,proto in pairs(decode) do
 	dclone[name] = model_utils.clone_many_times(proto, 1, not proto.parameters)
 end
 
-print('cloning encoder...')
 eclone = {}
-local max_enc_len = 500
+local max_enc_len = 10
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
 
+-- prepare initial hidden state 
 local init_state = {}
 for i=1, opt.num_layers do
 	local h_init = torch.zeros(opt.batch_size, opt.rnn_size)
@@ -92,8 +100,7 @@ for i=1, opt.num_layers do
 	table.insert(init_state, h_init:clone())
 end
 
-print('number of parameters in the model: ' .. params:nElement())
-
+-- prepare EOS decoder input
 local t_vec = torch.DoubleTensor(opt.batch_size, 1)
 if opt.gpuid >= 0 then t_vec = t_vec:cuda() end
 t_vec:fill(-1)
@@ -108,18 +115,16 @@ function feval(x)
 	grad_params:zero()
 
 	-- get minibatch
-	--local x, y = loader:next_batch()
-	local x, y = loader:next_batch()
-	in_length = x:select(1,1):nElement()
-	assert(in_length <= max_enc_len)
-
+	local x, y = loader:next_batch(1)
 	if opt.gpuid >= 0 then
 	  x = x:float():cuda()
 	  y = y:float():cuda()
 	end
 
+	in_length = x:select(1,1):nElement()
+	assert(in_length <= max_enc_len)
+
 	---------- FORWARD PASS ---------------------
-	-- clone encoding LSTM
 	local en_rnn_state = {[0] = init_global_state}
 	for t=1,in_length do
 		eclone.rnn[t]:training()
@@ -135,7 +140,7 @@ function feval(x)
 	for k=1, #init_state do table.insert(dec_rnn_state[1], lst[k]) end
 	local loss = dclone.criterion[1]:forward(lst[#lst], y)
 
-	-- -- -- ------- BACKWARD PASS --------------------
+	---------------- BACKWARD PASS --------------------
 	local ddec_rnn_state = {[1] = clone_list(init_state)}
 	doutput = dclone.criterion[1]:backward(lst[#lst], y)
 	table.insert(ddec_rnn_state[1], doutput)
