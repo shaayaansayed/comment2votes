@@ -113,7 +113,7 @@ function Comment2VoteSGDLoader:next_batch(split_index)
 end
 
 function Comment2VoteSGDLoader:reset_batch_pointer(split_index)
-	self.batch_ix[split_index] = 1
+	self.batch_ix[split_index] = 0
 end
 
 function Comment2VoteSGDLoader.data_to_tensor(comment_file, score_file, vocab_file, tensor_comment_file, tensor_score_file)

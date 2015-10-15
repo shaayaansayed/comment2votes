@@ -105,23 +105,23 @@ local t_vec = torch.DoubleTensor(opt.batch_size, 1)
 if opt.gpuid >= 0 then t_vec = t_vec:cuda() end
 t_vec:fill(-1)
 
- function eval_split(split_index)
-	 print('evaluating loss over validation set...')
-	 local n = loader.split_sizes[split_index]
+function eval_split(split_index)
+	print('evaluating loss over validation set...')
 
+	n = loader.split_sizes[split_index]
 	loader:reset_batch_pointer(split_index) -- move batch iteration pointer for this split to front
 	local loss = 0
 	local en_rnn_state = {[0] = init_state}
 
-	for i = 1,n do -- iterate over batches in the split
+	for i=1,n do -- iterate over batches in the split
 		-- fetch a batch
 		local x, y = loader:next_batch(split_index)
+		in_length = x:select(1,1):nElement()
 
 		if opt.gpuid >= 0 then
 				x = x:float():cuda()
 				y = y:float():cuda()
 		end
-
 		-- forward pass
 		for t=1,in_length do
 			eclone.rnn[t]:training()
