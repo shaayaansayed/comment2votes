@@ -79,7 +79,7 @@ end
 
 print('cloning encoder...')
 eclone = {}
-local max_enc_len = 20
+local max_enc_len = 500
 for name, proto in pairs(encode) do
   eclone[name] = model_utils.clone_many_times(proto, max_enc_len, not proto.parameters)
 end
